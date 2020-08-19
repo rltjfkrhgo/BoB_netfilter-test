@@ -5,11 +5,15 @@
 #include <linux/types.h>
 #include <linux/netfilter.h>		/* for NF_ACCEPT */
 #include <errno.h>
+#include <string.h>
 
 #include <libnetfilter_queue/libnetfilter_queue.h>
 
+// 차단시킬 사이트
+char* hostDeny = NULL;
+
 /* returns packet id */
-static u_int32_t print_pkt (struct nfq_data *tb)
+static u_int32_t print_pkt (struct nfq_data *tb, int *verdict)
 {
 	int id = 0;
 	struct nfqnl_msg_packet_hdr *ph;
@@ -56,7 +60,35 @@ static u_int32_t print_pkt (struct nfq_data *tb)
 
 	ret = nfq_get_payload(tb, &data);
 	if (ret >= 0)
-		printf("payload_len=%d ", ret);
+	{
+		printf("payload_len=%d \n", ret);
+
+		// 과제 파트
+
+		// TCP인지 확인
+		if(*(data+9) == 0x6)
+		{
+			uint8_t ipLen = (*data & 0xf) * 4;  // ip header length
+			data += ipLen;  // now data is tcp
+
+			uint8_t tcpLen = ( (*(data+12) >> 4) & 0xf ) * 4;  // tcp header length
+			data += tcpLen;  // now data may be http
+
+			// 차단시킬 사이트와 패킷의 host와 비교
+			int res = strncmp(hostDeny, data+22, strlen(hostDeny));
+			if(res == 0)
+			{
+				printf("WARNING!!\n");
+				*verdict = NF_DROP;
+			}
+			else
+				*verdict = NF_ACCEPT;			
+		}
+
+
+		// 과제 파트 끝
+
+	}
 
 	fputc('\n', stdout);
 
@@ -67,19 +99,34 @@ static u_int32_t print_pkt (struct nfq_data *tb)
 static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 	      struct nfq_data *nfa, void *data)
 {
-	u_int32_t id = print_pkt(nfa);
+	int verdict = NF_ACCEPT;
+	// 이 패킷을 ACCEPT 할 것인지 DROP 할 것인지 verdict에 담기게 된다.
+	u_int32_t id = print_pkt(nfa, &verdict);
 	printf("entering callback\n");
-	return nfq_set_verdict(qh, id, NF_ACCEPT, 0, NULL);
+
+	return nfq_set_verdict(qh, id, verdict, 0, NULL);
 }
 
 int main(int argc, char **argv)
 {
-	struct nfq_handle *h;
-	struct nfq_q_handle *qh;
-	struct nfnl_handle *nh;
-	int fd;
-	int rv;
-	char buf[4096] __attribute__ ((aligned));
+	struct nfq_handle    *h;
+	struct nfq_q_handle  *qh;
+	struct nfnl_handle   *nh;
+	int   fd;
+	int   rv;
+	char  buf[4096] __attribute__ ((aligned));
+
+	if(argc != 2)
+	{
+		printf("syntax: netfilter-test <host>\n");
+		printf("sample: netfilter-test test.gilgil.net\n");
+		return -1;
+	}
+
+	// 차단시킬 사이트 등록
+	hostDeny = argv[1];
+	printf("%s\n", hostDeny);
+	printf("%ld\n", strlen(hostDeny));
 
 	printf("opening library handle\n");
 	h = nfq_open();
