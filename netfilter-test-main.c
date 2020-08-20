@@ -10,7 +10,7 @@
 #include <libnetfilter_queue/libnetfilter_queue.h>
 
 // 차단시킬 사이트
-char* hostDeny = NULL;
+char* deniedHost = NULL;
 
 /* returns packet id */
 static u_int32_t print_pkt (struct nfq_data *tb, int *verdict)
@@ -25,10 +25,13 @@ static u_int32_t print_pkt (struct nfq_data *tb, int *verdict)
 	ph = nfq_get_msg_packet_hdr(tb);
 	if (ph) {
 		id = ntohl(ph->packet_id);
+		/*
 		printf("hw_protocol=0x%04x hook=%u id=%u ",
 			ntohs(ph->hw_protocol), ph->hook, id);
+		*/
 	}
 
+	/*
 	hwph = nfq_get_packet_hw(tb);
 	if (hwph) {
 		int i, hlen = ntohs(hwph->hw_addrlen);
@@ -57,11 +60,14 @@ static u_int32_t print_pkt (struct nfq_data *tb, int *verdict)
 	ifi = nfq_get_physoutdev(tb);
 	if (ifi)
 		printf("physoutdev=%u ", ifi);
+	*/
 
 	ret = nfq_get_payload(tb, &data);
 	if (ret >= 0)
 	{
+		/*
 		printf("payload_len=%d \n", ret);
+		*/
 
 		// 과제 파트
 
@@ -75,16 +81,16 @@ static u_int32_t print_pkt (struct nfq_data *tb, int *verdict)
 			data += tcpLen;  // now data may be http
 
 			// 차단시킬 사이트와 패킷의 host와 비교
-			int res = strncmp(hostDeny, data+22, strlen(hostDeny));
+			int res = strncmp(deniedHost, data+22, strlen(deniedHost));
 			if(res == 0)
 			{
-				printf("WARNING!!\n");
+				printf("          %s\n", deniedHost);
+				printf("          !! BLOCKED !!\n");
 				*verdict = NF_DROP;
 			}
 			else
 				*verdict = NF_ACCEPT;			
 		}
-
 
 		// 과제 파트 끝
 
@@ -124,9 +130,8 @@ int main(int argc, char **argv)
 	}
 
 	// 차단시킬 사이트 등록
-	hostDeny = argv[1];
-	printf("%s\n", hostDeny);
-	printf("%ld\n", strlen(hostDeny));
+	deniedHost = argv[1];
+	printf("BLOCK host: %s\n", deniedHost);
 
 	printf("opening library handle\n");
 	h = nfq_open();
