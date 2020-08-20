@@ -17,87 +17,62 @@ static u_int32_t print_pkt (struct nfq_data *tb, int *verdict)
 {
 	int id = 0;
 	struct nfqnl_msg_packet_hdr *ph;
-	struct nfqnl_msg_packet_hw *hwph;
-	u_int32_t mark,ifi;
 	int ret;
 	unsigned char *data;
 
 	ph = nfq_get_msg_packet_hdr(tb);
 	if (ph) {
 		id = ntohl(ph->packet_id);
-		/*
-		printf("hw_protocol=0x%04x hook=%u id=%u ",
-			ntohs(ph->hw_protocol), ph->hook, id);
-		*/
 	}
-
-	/*
-	hwph = nfq_get_packet_hw(tb);
-	if (hwph) {
-		int i, hlen = ntohs(hwph->hw_addrlen);
-
-		printf("hw_src_addr=");
-		for (i = 0; i < hlen-1; i++)
-			printf("%02x:", hwph->hw_addr[i]);
-		printf("%02x ", hwph->hw_addr[hlen-1]);
-	}
-
-	mark = nfq_get_nfmark(tb);
-	if (mark)
-		printf("mark=%u ", mark);
-
-	ifi = nfq_get_indev(tb);
-	if (ifi)
-		printf("indev=%u ", ifi);
-
-	ifi = nfq_get_outdev(tb);
-	if (ifi)
-		printf("outdev=%u ", ifi);
-	ifi = nfq_get_physindev(tb);
-	if (ifi)
-		printf("physindev=%u ", ifi);
-
-	ifi = nfq_get_physoutdev(tb);
-	if (ifi)
-		printf("physoutdev=%u ", ifi);
-	*/
 
 	ret = nfq_get_payload(tb, &data);
 	if (ret >= 0)
 	{
-		/*
-		printf("payload_len=%d \n", ret);
-		*/
-
 		// 과제 파트
 
 		// TCP인지 확인
-		if(*(data+9) == 0x6)
+		if(data[9] == 0x6)
 		{
-			uint8_t ipHdrLen = (*data & 0xf) * 4;  // ip header length
+			uint8_t ipHdrLen = (data[0] & 0xf) * 4;  // ip header length
 			data += ipHdrLen;   // now data is tcp
 
-			uint8_t tcpHdrLen = ( (*(data+12) >> 4) & 0xf ) * 4;  // tcp header length
+			uint8_t tcpHdrLen = ( (data[12] >> 4) & 0xf ) * 4;  // tcp header length
 			data += tcpHdrLen;  // now data may be http
 
-			// 차단시킬 사이트와 패킷의 host와 비교
-			// 일치하면 DROP!!
-			int res = strncmp(deniedHost, data+22, strlen(deniedHost));
-			if(res == 0)
+			int dataLen = ret - ipHdrLen - tcpHdrLen;  // payload length
+
+			// HTTP Request인지 확인
+			if( strncmp(data,  "GET", 3) == 0 || 
+			    strncmp(data, "POST", 4) == 0 )
 			{
-				printf("          %s\n", deniedHost);
-				printf("          !! BLOCKED !!\n");
-				*verdict = NF_DROP;
+				int idx = 0;
+				// Host 필드 찾기
+				for(idx = 0; idx < dataLen; idx++)
+				{
+					if(strncmp(data+idx, "Host: ", 6) == 0)
+						break;
+				}
+
+				// 차단시킬 사이트와 패킷의 host와 비교
+				// 일치하면 DROP!!
+				if( strncmp(deniedHost, data+idx+6, strlen(deniedHost)) == 0 )
+				{
+					printf("          %s\n", deniedHost);
+					printf("          !! BLOCKED !!\n");
+					*verdict = NF_DROP;
+				}
+				else
+					*verdict = NF_ACCEPT;
+				
 			}
-			else
-				*verdict = NF_ACCEPT;			
+			// if HTTP request
+
 		}
+		// if TCP
 
 		// 과제 파트 끝
 
 	}
-
-	fputc('\n', stdout);
 
 	return id;
 }
@@ -109,7 +84,6 @@ static int cb(struct nfq_q_handle *qh, struct nfgenmsg *nfmsg,
 	int verdict = NF_ACCEPT;
 	// 이 패킷을 ACCEPT 할 것인지 DROP 할 것인지 verdict에 담기게 된다.
 	u_int32_t id = print_pkt(nfa, &verdict);
-	printf("entering callback\n");
 
 	return nfq_set_verdict(qh, id, verdict, 0, NULL);
 }
@@ -170,7 +144,7 @@ int main(int argc, char **argv)
 
 	for (;;) {
 		if ((rv = recv(fd, buf, sizeof(buf), 0)) >= 0) {
-			printf("pkt received\n");
+			// printf("pkt received\n");
 			nfq_handle_packet(h, buf, rv);
 			continue;
 		}
