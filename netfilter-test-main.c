@@ -74,13 +74,14 @@ static u_int32_t print_pkt (struct nfq_data *tb, int *verdict)
 		// TCP인지 확인
 		if(*(data+9) == 0x6)
 		{
-			uint8_t ipLen = (*data & 0xf) * 4;  // ip header length
-			data += ipLen;  // now data is tcp
+			uint8_t ipHdrLen = (*data & 0xf) * 4;  // ip header length
+			data += ipHdrLen;   // now data is tcp
 
-			uint8_t tcpLen = ( (*(data+12) >> 4) & 0xf ) * 4;  // tcp header length
-			data += tcpLen;  // now data may be http
+			uint8_t tcpHdrLen = ( (*(data+12) >> 4) & 0xf ) * 4;  // tcp header length
+			data += tcpHdrLen;  // now data may be http
 
 			// 차단시킬 사이트와 패킷의 host와 비교
+			// 일치하면 DROP!!
 			int res = strncmp(deniedHost, data+22, strlen(deniedHost));
 			if(res == 0)
 			{
